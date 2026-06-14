@@ -52,33 +52,35 @@ class OverlayWindow(QWidget):
         layout.addWidget(self.text_label)
         self.setLayout(layout)
 
-        # Grayish-black background, soft borders, and rounded corners
+        # Target only OverlayWindow by object name to prevent inheriting properties in QLabels
+        self.setObjectName("OverlayWindow")
         self.setStyleSheet("""
-            QWidget {
-                background-color: rgba(28, 28, 30, 230); /* 90% opacity charcoal */
+            #OverlayWindow {
+                background-color: rgba(28, 28, 30, 242); /* 95% opacity charcoal */
                 border: 1px solid rgba(255, 255, 255, 20); /* 8% opacity soft boundary */
-                border-radius: 14px;
+                border-radius: 10px; /* 10px border radius as requested */
+                padding: 12px; /* Add padding as requested */
             }
         """)
 
         self.resize(450, 110)
-        self._center_on_screen()
+        self._position_on_screen()
 
-    def _center_on_screen(self):
-        # Place window horizontally centered and 80px above screen bottom
+    def _position_on_screen(self):
+        # Place window in the right-side bottom corner of the screen
         screen = self.screen().availableGeometry()
-        x = (screen.width() - self.width()) // 2
-        y = screen.height() - self.height() - 80
+        x = screen.x() + screen.width() - self.width() - 40
+        y = screen.y() + screen.height() - self.height() - 40
         self.move(x, y)
 
     @pyqtSlot(str)
     def _show_text(self, text: str):
         self.text_label.setText(text)
         self.adjustSize()
-        self._center_on_screen()
+        self._position_on_screen()
 
     @pyqtSlot(str)
     def _show_status(self, status: str):
         self.status_label.setText(status)
         self.adjustSize()
-        self._center_on_screen()
+        self._position_on_screen()
