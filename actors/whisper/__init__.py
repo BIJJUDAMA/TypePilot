@@ -68,7 +68,9 @@ class WhisperActor(Actor):
         with self.buffer_lock:
             if not self.audio_buffer:
                 return
-            audio_copy = np.array(self.audio_buffer, dtype=np.float32)
+            # Slice the last 3.0 seconds (48,000 samples at 16kHz) for context window
+            context_samples = self.audio_buffer[-48000:]
+            audio_copy = np.array(context_samples, dtype=np.float32)
             
         if len(audio_copy) < 160: # less than 10ms, skip
             return
