@@ -31,28 +31,10 @@ class TestWhisperActor(unittest.TestCase):
         with self.actor.buffer_lock:
             self.assertEqual(len(self.actor.audio_buffer), 320)
             np.testing.assert_allclose(self.actor.audio_buffer, samples)
-        self.assertFalse(self.actor.is_silent)
-
-    def test_rms_silence_gating(self):
-        # Feed 50 silent chunks (RMS = 0.0)
-        silent_bytes = np.array([0.0] * 320, dtype=np.float32).tobytes()
-        for _ in range(50):
-            self.actor.handle_event(AUDIO_CHUNK, {"audio": silent_bytes})
-            
-        self.assertTrue(self.actor.is_silent)
-        
-        # Verify that no transcription was triggered
-        self.mock_model.transcribe.assert_not_called()
-        self.bus.publish.assert_not_called()
-
-        # Feed 1 active chunk to break silence
-        active_bytes = np.array([0.1] * 320, dtype=np.float32).tobytes()
-        self.actor.handle_event(AUDIO_CHUNK, {"audio": active_bytes})
-        self.assertFalse(self.actor.is_silent)
 
     @patch('threading.Thread')
     def test_periodic_transcription_triggered(self, mock_thread_class):
-        # We want to check that transcription is triggered asynchronously after 25 active chunks
+        # We want to check that transcription is triggered asynchronously after 25 chunks
         mock_segment = MagicMock()
         mock_segment.text = "hello"
         self.mock_model.transcribe.return_value = ([mock_segment], None)
@@ -67,6 +49,26 @@ class TestWhisperActor(unittest.TestCase):
         # Send the 25th chunk
         self.actor.handle_event(AUDIO_CHUNK, {"audio": active_bytes})
         mock_thread_class.assert_called_once()
+
+    def test_silence_with_vad_filter_empty_partial(self):
+        # Test that if VAD raises max() iterable error, empty partial is published
+        self.mock_model.transcribe.side_effect = ValueError("max() iterable argument is empty")
+        
+        # Run worker directly
+        self.actor._transcribe_async_worker(np.array([0.0] * 320, dtype=np.float32))
+        
+        self.bus.publish.assert_called_once_with(TRANSCRIPT_PARTIAL, {"text": ""})
+
+    def test_silence_with_vad_filter_empty_final(self):
+        # Test that if final transcription raises max() iterable error, empty final is published
+        self.mock_model.transcribe.side_effect = ValueError("max() iterable argument is empty")
+        
+        # Accumulate audio and release hotkey
+        active_bytes = np.array([0.0] * 320, dtype=np.float32).tobytes()
+        self.actor.handle_event(AUDIO_CHUNK, {"audio": active_bytes})
+        self.actor.handle_event(HOTKEY_RELEASED, {})
+        
+        self.bus.publish.assert_called_once_with(TRANSCRIPT_FINAL, {"text": ""})
 
     def test_hotkey_released_final_transcription(self):
         mock_segment = MagicMock()

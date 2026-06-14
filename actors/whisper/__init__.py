@@ -18,8 +18,6 @@ class WhisperActor(Actor):
         
         self.audio_buffer = []
         self.buffer_lock = threading.Lock()
-        self.silent_chunks_count = 0
-        self.is_silent = True
         self.chunks_received_since_last_transcribe = 0
         self.transcribing = False
         
@@ -41,24 +39,13 @@ class WhisperActor(Actor):
             if len(samples) == 0:
                 return
                 
-            # RMS-based Silence Detection
-            rms = np.sqrt(np.mean(samples ** 2))
-            if rms < 0.006:
-                self.silent_chunks_count += 1
-            else:
-                self.silent_chunks_count = 0
-                self.is_silent = False
-                
-            if self.silent_chunks_count >= 50: # 50 chunks * 20ms = 1.0 second
-                self.is_silent = True
-                
             with self.buffer_lock:
                 self.audio_buffer.extend(samples)
                 
             self.chunks_received_since_last_transcribe += 1
             if self.chunks_received_since_last_transcribe >= 25: # 25 chunks * 20ms = 500ms
                 self.chunks_received_since_last_transcribe = 0
-                if not self.is_silent and not self.transcribing:
+                if not self.transcribing:
                     self._run_async_transcription()
                     
         except Exception as e:
@@ -106,8 +93,6 @@ class WhisperActor(Actor):
         with self.buffer_lock:
             audio_data = np.array(self.audio_buffer, dtype=np.float32)
             self.audio_buffer = []
-            self.silent_chunks_count = 0
-            self.is_silent = True
             self.chunks_received_since_last_transcribe = 0
             
         if len(audio_data) < 160:
