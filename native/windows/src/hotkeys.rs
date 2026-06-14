@@ -33,13 +33,17 @@ unsafe extern "system" fn hook_proc(code: i32, w_param: WPARAM, l_param: LPARAM)
                 let ctrl_down = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0;
                 let alt_down = GetAsyncKeyState(VK_MENU.0 as i32) < 0;
 
-                if ctrl_down && alt_down && !IS_PRESSED.load(Ordering::SeqCst) {
-                    IS_PRESSED.store(true, Ordering::SeqCst);
-                    trigger_callback(true);
+                if ctrl_down && alt_down {
+                    if !IS_PRESSED.load(Ordering::SeqCst) {
+                        IS_PRESSED.store(true, Ordering::SeqCst);
+                        trigger_callback(true);
+                    }
+                    return LRESULT(1); // Swallow the hotkey press and repeat events
                 }
             } else if is_up && IS_PRESSED.load(Ordering::SeqCst) {
                 IS_PRESSED.store(false, Ordering::SeqCst);
                 trigger_callback(false);
+                return LRESULT(1); // Swallow the hotkey release event
             }
         }
     }
