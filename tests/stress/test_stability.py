@@ -7,9 +7,7 @@ from core.state_machine.states import AppState
 from core.events import TEXT_INJECTED
 from actors.hotkey import HotkeyActor
 from actors.audio import AudioActor
-from actors.window_assembler import WindowAssemblerActor
 from actors.whisper import WhisperActor
-from actors.transcript_assembler import TranscriptAssemblerActor
 from actors.injection import InjectionActor
 from actors.overlay import OverlayActor
 
@@ -32,9 +30,7 @@ class TestAppStabilityStress(unittest.TestCase):
         # Create active actors
         hotkey_actor = HotkeyActor(bus, bridge, state_machine)
         audio_actor = AudioActor(bus, bridge, config, state_machine)
-        window_assembler = WindowAssemblerActor(bus, config)
         whisper_actor = WhisperActor(bus, config)
-        transcript_assembler = TranscriptAssemblerActor(bus)
         injection_actor = InjectionActor(bus, bridge, state_machine)
         
         mock_window = MagicMock()
@@ -42,9 +38,7 @@ class TestAppStabilityStress(unittest.TestCase):
 
         hotkey_actor.start()
         audio_actor.start()
-        window_assembler.start()
         whisper_actor.start()
-        transcript_assembler.start()
         injection_actor.start()
         overlay_actor.start()
 
@@ -94,8 +88,6 @@ class TestAppStabilityStress(unittest.TestCase):
         # Stop actor threads
         hotkey_actor.stop()
         audio_actor.stop()
-        window_assembler.stop()
         whisper_actor.stop()
-        transcript_assembler.stop()
         injection_actor.stop()
         overlay_actor.stop()

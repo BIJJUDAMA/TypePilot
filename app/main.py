@@ -8,9 +8,7 @@ from core.logging import get_logger
 
 from actors.hotkey import HotkeyActor
 from actors.audio import AudioActor
-from actors.window_assembler import WindowAssemblerActor
 from actors.whisper import WhisperActor
-from actors.transcript_assembler import TranscriptAssemblerActor
 from actors.injection import InjectionActor
 from actors.overlay import OverlayActor
 from ui.overlay import OverlayWindow
@@ -38,9 +36,7 @@ class TypePilotApp:
         self.actors = [
             HotkeyActor(self.bus, self.bridge, self.state_machine),
             AudioActor(self.bus, self.bridge, self.config, self.state_machine),
-            WindowAssemblerActor(self.bus, self.config),
             WhisperActor(self.bus, self.config),
-            TranscriptAssemblerActor(self.bus),
             InjectionActor(self.bus, self.bridge, self.state_machine),
             OverlayActor(self.bus, self.overlay_window)
         ]
