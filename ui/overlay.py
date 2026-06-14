@@ -29,7 +29,7 @@ class OverlayWindow(QWidget):
             Qt.WindowType.WindowDoesNotAcceptFocus |
             Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         # Build minimalist vertical layout
@@ -56,10 +56,9 @@ class OverlayWindow(QWidget):
         self.setObjectName("OverlayWindow")
         self.setStyleSheet("""
             #OverlayWindow {
-                background-color: rgba(28, 28, 30, 242); /* 95% opacity charcoal */
-                border: 1px solid rgba(255, 255, 255, 20); /* 8% opacity soft boundary */
-                border-radius: 10px; /* 10px border radius as requested */
-                padding: 12px; /* Add padding as requested */
+                background-color: #1C1C1E; /* Solid charcoal background */
+                border: 2px solid #3A3A3C; /* Visible solid border */
+                padding: 12px;
             }
         """)
 
