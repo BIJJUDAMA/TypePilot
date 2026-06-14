@@ -13,6 +13,53 @@ static AUDIO_CHANNEL: Lazy<(Sender<Vec<f32>>, Receiver<Vec<f32>>)> = Lazy::new(|
 static STREAM: Mutex<Option<StreamWrapper>> = Mutex::new(None);
 static IS_RECORDING: AtomicBool = AtomicBool::new(false);
 
+// Processes raw f32 samples, converts multi-channel to mono, resamples to 16kHz, and batches sends
+fn process_audio_data(
+    data: &[f32],
+    channels: usize,
+    tx: &Sender<Vec<f32>>,
+    sample_buffer: &mut Vec<f32>,
+    resample_index: &mut f32,
+    resample_step: f32,
+) {
+    // Convert stereo/multi-channel to mono
+    let mut mono_samples = Vec::new();
+    if channels == 1 {
+        mono_samples.extend_from_slice(data);
+    } else {
+        for chunk in data.chunks_exact(channels) {
+            let sum: f32 = chunk.iter().sum();
+            mono_samples.push(sum / channels as f32);
+        }
+    }
+
+    // Perform linear resampling to 16kHz and batch into a single vector
+    let mut resampled_chunk = Vec::new();
+    sample_buffer.extend(mono_samples);
+    while (*resample_index as usize) < sample_buffer.len() {
+        let idx = *resample_index as usize;
+        let sample = if idx + 1 < sample_buffer.len() {
+            let frac = *resample_index - idx as f32;
+            sample_buffer[idx] * (1.0 - frac) + sample_buffer[idx + 1] * frac
+        } else {
+            sample_buffer[idx]
+        };
+
+        resampled_chunk.push(sample);
+        *resample_index += resample_step;
+    }
+
+    // Send the entire chunk at once to minimize thread contention
+    if !resampled_chunk.is_empty() {
+        let _ = tx.send(resampled_chunk);
+    }
+
+    if *resample_index as usize > 0 {
+        sample_buffer.drain(0..(*resample_index as usize));
+        *resample_index -= resample_index.floor();
+    }
+}
+
 // Starts cpal audio capture stream and linear resampling
 pub fn start_capture_stream() -> Result<(), String> {
     if IS_RECORDING.load(Ordering::SeqCst) {
@@ -37,59 +84,62 @@ pub fn start_capture_stream() -> Result<(), String> {
 
     let sample_rate = config.sample_rate.0 as f32;
     let channels = config.channels as usize;
-
-    let mut resample_index = 0.0f32;
     let resample_step = sample_rate / 16000.0f32;
-    let mut sample_buffer = Vec::new();
     let tx = AUDIO_CHANNEL.0.clone();
-
     let error_callback = |err| eprintln!("Audio stream error: {}", err);
-    let data_callback = move |data: &[f32], _: &cpal::InputCallbackInfo| {
-        if !IS_RECORDING.load(Ordering::SeqCst) {
-            return;
-        }
-
-        // Convert stereo/multi-channel to mono
-        let mut mono_samples = Vec::new();
-        if channels == 1 {
-            mono_samples.extend_from_slice(data);
-        } else {
-            for chunk in data.chunks_exact(channels) {
-                let sum: f32 = chunk.iter().sum();
-                mono_samples.push(sum / channels as f32);
-            }
-        }
-
-        // Perform linear resampling to 16kHz and batch into a single vector
-        let mut resampled_chunk = Vec::new();
-        sample_buffer.extend(mono_samples);
-        while (resample_index as usize) < sample_buffer.len() {
-            let idx = resample_index as usize;
-            let sample = if idx + 1 < sample_buffer.len() {
-                let frac = resample_index - idx as f32;
-                sample_buffer[idx] * (1.0 - frac) + sample_buffer[idx + 1] * frac
-            } else {
-                sample_buffer[idx]
-            };
-
-            resampled_chunk.push(sample);
-            resample_index += resample_step;
-        }
-
-        // Send the entire chunk at once to minimize thread contention
-        if !resampled_chunk.is_empty() {
-            let _ = tx.send(resampled_chunk);
-        }
-
-        if resample_index as usize > 0 {
-            sample_buffer.drain(0..(resample_index as usize));
-            resample_index -= resample_index.floor();
-        }
-    };
 
     let stream = match default_config.sample_format() {
-        cpal::SampleFormat::F32 => device.build_input_stream(&config, data_callback, error_callback, None),
-        _ => return Err("Only F32 sample format is supported".to_string()),
+        cpal::SampleFormat::F32 => {
+            let mut resample_index = 0.0f32;
+            let mut sample_buffer = Vec::new();
+            let tx = tx.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    if !IS_RECORDING.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    process_audio_data(data, channels, &tx, &mut sample_buffer, &mut resample_index, resample_step);
+                },
+                error_callback,
+                None,
+            )
+        }
+        cpal::SampleFormat::I16 => {
+            let mut resample_index = 0.0f32;
+            let mut sample_buffer = Vec::new();
+            let tx = tx.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    if !IS_RECORDING.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let f32_data: Vec<f32> = data.iter().map(|&x| x as f32 / 32768.0).collect();
+                    process_audio_data(&f32_data, channels, &tx, &mut sample_buffer, &mut resample_index, resample_step);
+                },
+                error_callback,
+                None,
+            )
+        }
+        cpal::SampleFormat::U16 => {
+            let mut resample_index = 0.0f32;
+            let mut sample_buffer = Vec::new();
+            let tx = tx.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                    if !IS_RECORDING.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let f32_data: Vec<f32> = data.iter().map(|&x| (x as f32 - 32768.0) / 32768.0).collect();
+                    process_audio_data(&f32_data, channels, &tx, &mut sample_buffer, &mut resample_index, resample_step);
+                },
+                error_callback,
+                None,
+            )
+        }
+        _ => return Err("Unsupported sample format".to_string()),
     }.map_err(|e| format!("Failed to build input stream: {}", e))?;
 
     stream.play().map_err(|e| format!("Failed to play stream: {}", e))?;
