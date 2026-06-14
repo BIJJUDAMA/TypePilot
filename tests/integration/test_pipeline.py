@@ -8,7 +8,9 @@ from core.state_machine.states import AppState
 from core.events import TEXT_INJECTED
 from actors.hotkey import HotkeyActor
 from actors.audio import AudioActor
+from actors.window_assembler import WindowAssemblerActor
 from actors.whisper import WhisperActor
+from actors.transcript_assembler import TranscriptAssemblerActor
 from actors.injection import InjectionActor
 from actors.overlay import OverlayActor
 
@@ -43,7 +45,9 @@ class TestPipelineIntegration(unittest.TestCase):
         # Setup actors
         hotkey_actor = HotkeyActor(bus, bridge, state_machine)
         audio_actor = AudioActor(bus, bridge, config, state_machine)
+        window_assembler = WindowAssemblerActor(bus, config)
         whisper_actor = WhisperActor(bus, config)
+        transcript_assembler = TranscriptAssemblerActor(bus)
         injection_actor = InjectionActor(bus, bridge, state_machine)
         
         mock_window = MagicMock()
@@ -51,7 +55,9 @@ class TestPipelineIntegration(unittest.TestCase):
 
         hotkey_actor.start()
         audio_actor.start()
+        window_assembler.start()
         whisper_actor.start()
+        transcript_assembler.start()
         injection_actor.start()
         overlay_actor.start()
 
@@ -62,7 +68,7 @@ class TestPipelineIntegration(unittest.TestCase):
 
         bus.subscribe(TEXT_INJECTED, on_injected)
 
-        # Trigger hotkey press
+        # Retrieve hotkey trigger callbacks
         reg_args = bridge.register_hotkey.call_args[0]
         on_press = reg_args[1]
         on_release = reg_args[2]
@@ -74,9 +80,9 @@ class TestPipelineIntegration(unittest.TestCase):
         # Trigger hotkey release
         on_release()
         
-        # Wait up to 1 second for injection
+        # Wait up to 1.5 seconds for injection
         start_time = time.time()
-        while injected_event_data is None and (time.time() - start_time) < 1.0:
+        while injected_event_data is None and (time.time() - start_time) < 1.5:
             time.sleep(0.05)
 
         self.assertEqual(state_machine.state, AppState.IDLE)
@@ -86,6 +92,8 @@ class TestPipelineIntegration(unittest.TestCase):
 
         hotkey_actor.stop()
         audio_actor.stop()
+        window_assembler.stop()
         whisper_actor.stop()
+        transcript_assembler.stop()
         injection_actor.stop()
         overlay_actor.stop()

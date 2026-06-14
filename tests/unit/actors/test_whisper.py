@@ -1,7 +1,7 @@
 import array
 import unittest
 from unittest.mock import MagicMock, patch
-from core.events import AUDIO_CHUNK, HOTKEY_RELEASED, TRANSCRIPT_FINAL
+from core.events import AUDIO_WINDOW_READY, TRANSCRIPT_SEGMENT
 from actors.whisper import WhisperActor
 
 class TestWhisperActor(unittest.TestCase):
@@ -20,15 +20,10 @@ class TestWhisperActor(unittest.TestCase):
         mock_segment.text = "hello world"
         self.mock_model.transcribe.return_value = ([mock_segment], None)
 
-        # Feed 1 audio chunk
+        # Feed 1 window with is_final=True
         audio_bytes = array.array('f', [0.1] * 160).tobytes()
-        self.actor.handle_event(AUDIO_CHUNK, {"audio": audio_bytes})
-        self.assertEqual(len(self.actor.audio_buffer), 1)
-
-        # Trigger hotkey release
-        self.actor.handle_event(HOTKEY_RELEASED, {})
+        self.actor.handle_event(AUDIO_WINDOW_READY, {"audio": audio_bytes, "is_final": True})
         
-        # Verify transcription called and correct final transcript published
+        # Verify transcription called and correct transcript segment published
         self.mock_model.transcribe.assert_called_once()
-        self.bus.publish.assert_called_once_with(TRANSCRIPT_FINAL, {"text": "hello world"})
-        self.assertEqual(len(self.actor.audio_buffer), 0)
+        self.bus.publish.assert_called_once_with(TRANSCRIPT_SEGMENT, {"text": "hello world", "is_final": True})

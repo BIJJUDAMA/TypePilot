@@ -1,4 +1,3 @@
-import array
 import time
 import unittest
 from unittest.mock import MagicMock, patch
@@ -8,7 +7,9 @@ from core.state_machine.states import AppState
 from core.events import TEXT_INJECTED
 from actors.hotkey import HotkeyActor
 from actors.audio import AudioActor
+from actors.window_assembler import WindowAssemblerActor
 from actors.whisper import WhisperActor
+from actors.transcript_assembler import TranscriptAssemblerActor
 from actors.injection import InjectionActor
 from actors.overlay import OverlayActor
 
@@ -31,7 +32,9 @@ class TestAppStabilityStress(unittest.TestCase):
         # Create active actors
         hotkey_actor = HotkeyActor(bus, bridge, state_machine)
         audio_actor = AudioActor(bus, bridge, config, state_machine)
+        window_assembler = WindowAssemblerActor(bus, config)
         whisper_actor = WhisperActor(bus, config)
+        transcript_assembler = TranscriptAssemblerActor(bus)
         injection_actor = InjectionActor(bus, bridge, state_machine)
         
         mock_window = MagicMock()
@@ -39,7 +42,9 @@ class TestAppStabilityStress(unittest.TestCase):
 
         hotkey_actor.start()
         audio_actor.start()
+        window_assembler.start()
         whisper_actor.start()
+        transcript_assembler.start()
         injection_actor.start()
         overlay_actor.start()
 
@@ -62,7 +67,7 @@ class TestAppStabilityStress(unittest.TestCase):
                 return []
             bridge.get_audio_samples.side_effect = get_samples_mock
 
-            # Retrieve hotkey trigger callbacks from register call
+            # Retrieve hotkey trigger callbacks
             reg_args = bridge.register_hotkey.call_args[0]
             on_press = reg_args[1]
             on_release = reg_args[2]
@@ -73,19 +78,24 @@ class TestAppStabilityStress(unittest.TestCase):
 
             # Wait for text injection event
             start_time = time.time()
-            while injected_event_data is None and (time.time() - start_time) < 0.5:
+            while injected_event_data is None and (time.time() - start_time) < 1.0:
                 time.sleep(0.01)
 
             self.assertIsNotNone(injected_event_data, f"Cycle {i} failed to inject text")
             self.assertEqual(injected_event_data["text"], "stress test utterance")
             self.assertEqual(state_machine.state, AppState.IDLE)
             
-            # Clean up subscription callback to avoid scaling overhead
+            # Clean up subscription callback
             bus.unsubscribe(TEXT_INJECTED, on_injected)
+            
+            # Allow AudioActor background thread to fully stop and clean up
+            time.sleep(0.05)
 
         # Stop actor threads
         hotkey_actor.stop()
         audio_actor.stop()
+        window_assembler.stop()
         whisper_actor.stop()
+        transcript_assembler.stop()
         injection_actor.stop()
         overlay_actor.stop()
