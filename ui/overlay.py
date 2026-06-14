@@ -30,6 +30,7 @@ class OverlayWindow(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         # Build minimalist vertical layout
         layout = QVBoxLayout()
