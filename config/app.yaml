@@ -1,0 +1,19 @@
+audio:
+  sample_rate: 16000
+  channels: 1
+  format: float32
+  chunk_ms: 20
+
+whisper:
+  model: small
+
+punctuation:
+  enabled: true
+
+cleanup:
+  enabled: true
+  timeout_ms: 1500
+  model: smollm2
+
+overlay:
+  enabled: true
