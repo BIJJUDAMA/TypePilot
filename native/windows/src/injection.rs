@@ -1,19 +1,47 @@
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
+    VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
+    VK_RWIN,
 };
+
+fn add_keyup(inputs: &mut Vec<INPUT>, vk: VIRTUAL_KEY) {
+    inputs.push(INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: KEYEVENTF_KEYUP,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    });
+}
 
 // Injects string into active window by sending unicode keyboard inputs
 pub fn inject_text_to_active_window(text: &str) -> Result<(), String> {
-    let utf16_units: Vec<u16> = text.encode_utf16().collect();
     let mut inputs = Vec::new();
 
+    // Release any physically held modifier keys to prevent shortcut interference
+    let modifiers = [
+        VK_LCONTROL, VK_RCONTROL,
+        VK_LMENU, VK_RMENU,
+        VK_LSHIFT, VK_RSHIFT,
+        VK_LWIN, VK_RWIN
+    ];
+    for &mod_key in &modifiers {
+        add_keyup(&mut inputs, mod_key);
+    }
+
+    let utf16_units: Vec<u16> = text.encode_utf16().collect();
     for &unit in &utf16_units {
         // Key down event
         inputs.push(INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
                 ki: KEYBDINPUT {
-                    wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(0),
+                    wVk: VIRTUAL_KEY(0),
                     wScan: unit,
                     dwFlags: KEYEVENTF_UNICODE,
                     time: 0,
@@ -27,7 +55,7 @@ pub fn inject_text_to_active_window(text: &str) -> Result<(), String> {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
                 ki: KEYBDINPUT {
-                    wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(0),
+                    wVk: VIRTUAL_KEY(0),
                     wScan: unit,
                     dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
                     time: 0,
