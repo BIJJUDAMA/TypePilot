@@ -54,8 +54,7 @@ class WhisperActor(Actor):
                 beam_size=1,
                 vad_filter=True,
                 language=self.language,
-                temperature=0.0,
-                temperature_increment_on_fallback=None
+                temperature=0.0
             )
             text = " ".join([seg.text for seg in segments]).strip()
             if text:
@@ -85,8 +84,7 @@ class WhisperActor(Actor):
                 beam_size=5,
                 vad_filter=True,
                 language=self.language,
-                temperature=0.0,
-                temperature_increment_on_fallback=None
+                temperature=0.0
             )
             text = " ".join([seg.text for seg in segments]).strip()
             self.logger.info(f"Final transcript: '{text}'")
