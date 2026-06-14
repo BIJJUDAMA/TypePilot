@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock
 from core.events import HOTKEY_PRESSED, HOTKEY_RELEASED
+from core.state_machine.states import AppState
 from actors.hotkey import HotkeyActor
 
 class TestHotkeyActor(unittest.TestCase):
@@ -25,7 +26,9 @@ class TestHotkeyActor(unittest.TestCase):
         press_callback = args[1]
         release_callback = args[2]
 
+        self.state_machine.state = AppState.IDLE
         press_callback()
+        self.state_machine.state = AppState.LISTENING
         release_callback()
 
         self.bus.publish.assert_any_call(HOTKEY_PRESSED, self.bus.publish.call_args_list[0][0][1])

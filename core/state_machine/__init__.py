@@ -10,7 +10,7 @@ class AppStateMachine:
         self._valid_transitions = {
             AppState.IDLE: [AppState.LISTENING, AppState.ERROR],
             AppState.LISTENING: [AppState.PROCESSING, AppState.ERROR],
-            AppState.PROCESSING: [AppState.INJECTING, AppState.ERROR],
+            AppState.PROCESSING: [AppState.INJECTING, AppState.IDLE, AppState.ERROR],
             AppState.INJECTING: [AppState.IDLE, AppState.ERROR],
             AppState.ERROR: [AppState.IDLE]
         }

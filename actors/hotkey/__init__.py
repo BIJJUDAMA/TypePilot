@@ -19,20 +19,22 @@ class HotkeyActor(Actor):
         super().stop()
 
     def _on_press(self):
-        self.logger.info("Hotkey pressed")
-        try:
-            self.state_machine.transition_to(AppState.LISTENING)
-            self.event_bus.publish(HOTKEY_PRESSED, {"timestamp": time.time()})
-        except Exception as e:
-            self.logger.error(f"Failed to transition to LISTENING: {e}")
+        if self.state_machine.state == AppState.IDLE:
+            self.logger.info("Hotkey pressed")
+            try:
+                self.state_machine.transition_to(AppState.LISTENING)
+                self.event_bus.publish(HOTKEY_PRESSED, {"timestamp": time.time()})
+            except Exception as e:
+                self.logger.error(f"Failed to transition to LISTENING: {e}")
 
     def _on_release(self):
-        self.logger.info("Hotkey released")
-        try:
-            self.state_machine.transition_to(AppState.PROCESSING)
-            self.event_bus.publish(HOTKEY_RELEASED, {"timestamp": time.time()})
-        except Exception as e:
-            self.logger.error(f"Failed to transition to PROCESSING: {e}")
+        if self.state_machine.state == AppState.LISTENING:
+            self.logger.info("Hotkey released")
+            try:
+                self.state_machine.transition_to(AppState.PROCESSING)
+                self.event_bus.publish(HOTKEY_RELEASED, {"timestamp": time.time()})
+            except Exception as e:
+                self.logger.error(f"Failed to transition to PROCESSING: {e}")
 
     def handle_event(self, event_type, data):
         pass
