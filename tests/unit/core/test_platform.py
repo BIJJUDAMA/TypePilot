@@ -8,7 +8,7 @@ def test_platform_bridge_methods():
     # Test register_hotkey
     def dummy_callback():
         pass
-    bridge.register_hotkey(0x20, dummy_callback)
+    bridge.register_hotkey(0x20, dummy_callback, dummy_callback)
     
     # Test audio capture methods
     bridge.start_audio_capture()
