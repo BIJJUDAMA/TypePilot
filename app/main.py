@@ -25,6 +25,12 @@ class TypePilotApp:
         # PyQt6 application context
         self.qt_app = QApplication(sys.argv)
         self.overlay_window = OverlayWindow()
+        
+        # Periodic timer to allow Ctrl+C signal handling on Windows
+        from PyQt6.QtCore import QTimer
+        self.timer = QTimer()
+        self.timer.start(500)
+        self.timer.timeout.connect(lambda: None)
 
         # Initialize actors with constructor injection
         self.actors = [
