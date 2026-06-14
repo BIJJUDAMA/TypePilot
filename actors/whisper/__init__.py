@@ -9,10 +9,10 @@ class WhisperActor(Actor):
         super().__init__(event_bus)
         self.config = config
         
-        # Load model once at startup
+        # Load model once at startup with optimized int8 quantization on CPU
         model_size = self.config.get("whisper.model", "small")
-        self.model = WhisperModel(model_size, device="cpu", compute_type="float32")
-        self.logger.info(f"Loaded faster-whisper model: {model_size}")
+        self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        self.logger.info(f"Loaded faster-whisper model: {model_size} (int8 CPU)")
         
         self.audio_buffer = []
         self.chunks_since_last_partial = 0
@@ -35,15 +35,17 @@ class WhisperActor(Actor):
         # Periodically generate partial transcript (every ~500ms = 25 chunks * 20ms)
         if self.chunks_since_last_partial >= 25:
             self.chunks_since_last_partial = 0
-            self._generate_partial_transcript()
+            # Only run partial transcription if the queue is empty to prevent lagging behind
+            if self.queue.qsize() == 0:
+                self._generate_partial_transcript()
 
     def _generate_partial_transcript(self):
         if not self.audio_buffer:
             return
         try:
             audio_data = np.concatenate(self.audio_buffer)
-            # Run fast transcription for partial feedback
-            segments, _ = self.model.transcribe(audio_data, beam_size=1)
+            # Run fast transcription with beam_size=1 and vad_filter=True
+            segments, _ = self.model.transcribe(audio_data, beam_size=1, vad_filter=True)
             text = " ".join([seg.text for seg in segments]).strip()
             if text:
                 self.event_bus.publish(TRANSCRIPT_PARTIAL, {"text": text})
@@ -60,8 +62,8 @@ class WhisperActor(Actor):
             self.audio_buffer.clear()
             self.chunks_since_last_partial = 0
             
-            # Run full transcription on release
-            segments, _ = self.model.transcribe(audio_data, beam_size=5)
+            # Run full transcription on release with vad_filter=True
+            segments, _ = self.model.transcribe(audio_data, beam_size=5, vad_filter=True)
             text = " ".join([seg.text for seg in segments]).strip()
             self.logger.info(f"Final transcript: '{text}'")
             self.event_bus.publish(TRANSCRIPT_FINAL, {"text": text})
