@@ -6,6 +6,7 @@ audio:
 
 whisper:
   model: small
+  language: en
 
 punctuation:
   enabled: true

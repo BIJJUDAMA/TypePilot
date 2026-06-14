@@ -12,7 +12,8 @@ class WhisperActor(Actor):
         # Load model once at startup with optimized int8 quantization on CPU
         model_size = self.config.get("whisper.model", "small")
         self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
-        self.logger.info(f"Loaded faster-whisper model: {model_size} (int8 CPU)")
+        self.language = self.config.get("whisper.language", "en")
+        self.logger.info(f"Loaded faster-whisper model: {model_size} (int8 CPU, language: {self.language})")
         
         self.audio_buffer = []
         self.chunks_since_last_partial = 0
@@ -44,11 +45,27 @@ class WhisperActor(Actor):
             return
         try:
             audio_data = np.concatenate(self.audio_buffer)
-            # Run fast transcription with beam_size=1 and vad_filter=True
-            segments, _ = self.model.transcribe(audio_data, beam_size=1, vad_filter=True)
+            # Only transcribe the last 3 seconds (48,000 samples at 16kHz) for partials to avoid O(N^2) lag
+            audio_data_partial = audio_data[-48000:]
+            
+            # Run fast transcription with strict decoding parameters
+            segments, _ = self.model.transcribe(
+                audio_data_partial,
+                beam_size=1,
+                vad_filter=True,
+                language=self.language,
+                temperature=0.0,
+                temperature_increment_on_fallback=None
+            )
             text = " ".join([seg.text for seg in segments]).strip()
             if text:
                 self.event_bus.publish(TRANSCRIPT_PARTIAL, {"text": text})
+        except ValueError as e:
+            if "max() iterable argument is empty" in str(e):
+                # Silently ignore when VAD filters out all audio (no speech detected)
+                pass
+            else:
+                self.logger.error(f"Error transcribing partial: {e}")
         except Exception as e:
             self.logger.error(f"Error transcribing partial: {e}")
 
@@ -62,11 +79,25 @@ class WhisperActor(Actor):
             self.audio_buffer.clear()
             self.chunks_since_last_partial = 0
             
-            # Run full transcription on release with vad_filter=True
-            segments, _ = self.model.transcribe(audio_data, beam_size=5, vad_filter=True)
+            # Run full transcription on release with strict parameters
+            segments, _ = self.model.transcribe(
+                audio_data,
+                beam_size=5,
+                vad_filter=True,
+                language=self.language,
+                temperature=0.0,
+                temperature_increment_on_fallback=None
+            )
             text = " ".join([seg.text for seg in segments]).strip()
             self.logger.info(f"Final transcript: '{text}'")
             self.event_bus.publish(TRANSCRIPT_FINAL, {"text": text})
+        except ValueError as e:
+            if "max() iterable argument is empty" in str(e):
+                self.logger.info("Final transcript: (no speech detected)")
+                self.event_bus.publish(TRANSCRIPT_FINAL, {"text": ""})
+            else:
+                self.logger.error(f"Error transcribing final: {e}")
+                self.event_bus.publish(TRANSCRIPT_FINAL, {"text": ""})
         except Exception as e:
             self.logger.error(f"Error transcribing final: {e}")
             self.event_bus.publish(TRANSCRIPT_FINAL, {"text": ""})
