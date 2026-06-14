@@ -8,12 +8,12 @@ struct StreamWrapper(cpal::Stream);
 unsafe impl Send for StreamWrapper {}
 unsafe impl Sync for StreamWrapper {}
 
-// Channel to pass samples from audio thread to bridge
-static AUDIO_CHANNEL: Lazy<(Sender<f32>, Receiver<f32>)> = Lazy::new(|| unbounded());
+// Channel to pass chunks of samples from audio thread to bridge
+static AUDIO_CHANNEL: Lazy<(Sender<Vec<f32>>, Receiver<Vec<f32>>)> = Lazy::new(|| unbounded());
 static STREAM: Mutex<Option<StreamWrapper>> = Mutex::new(None);
 static IS_RECORDING: AtomicBool = AtomicBool::new(false);
 
-// Starts audio capture and resampling
+// Starts cpal audio capture stream and linear resampling
 pub fn start_capture_stream() -> Result<(), String> {
     if IS_RECORDING.load(Ordering::SeqCst) {
         return Ok(());
@@ -49,7 +49,7 @@ pub fn start_capture_stream() -> Result<(), String> {
             return;
         }
 
-        // Channels to mono conversion
+        // Convert stereo/multi-channel to mono
         let mut mono_samples = Vec::new();
         if channels == 1 {
             mono_samples.extend_from_slice(data);
@@ -60,7 +60,8 @@ pub fn start_capture_stream() -> Result<(), String> {
             }
         }
 
-        // Linear resample to 16kHz
+        // Perform linear resampling to 16kHz and batch into a single vector
+        let mut resampled_chunk = Vec::new();
         sample_buffer.extend(mono_samples);
         while (resample_index as usize) < sample_buffer.len() {
             let idx = resample_index as usize;
@@ -71,8 +72,13 @@ pub fn start_capture_stream() -> Result<(), String> {
                 sample_buffer[idx]
             };
 
-            let _ = tx.send(sample);
+            resampled_chunk.push(sample);
             resample_index += resample_step;
+        }
+
+        // Send the entire chunk at once to minimize thread contention
+        if !resampled_chunk.is_empty() {
+            let _ = tx.send(resampled_chunk);
         }
 
         if resample_index as usize > 0 {
@@ -95,7 +101,7 @@ pub fn start_capture_stream() -> Result<(), String> {
     Ok(())
 }
 
-// Stops audio capture
+// Stops cpal audio capture stream
 pub fn stop_capture_stream() {
     IS_RECORDING.store(false, Ordering::SeqCst);
     let mut stream_guard = STREAM.lock().unwrap();
@@ -104,11 +110,11 @@ pub fn stop_capture_stream() {
     }
 }
 
-// Pulls all pending samples from channel
+// Pulls all pending sample chunks from channel and flattens them
 pub fn pull_samples() -> Vec<f32> {
     let mut samples = Vec::new();
-    while let Ok(sample) = AUDIO_CHANNEL.1.try_recv() {
-        samples.push(sample);
+    while let Ok(chunk) = AUDIO_CHANNEL.1.try_recv() {
+        samples.extend(chunk);
     }
     samples
 }
